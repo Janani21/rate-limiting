@@ -22,8 +22,12 @@ class Rule
     (@options[:type] == :frequency ? 1 : @options[:limit])
   end
 
+  def expiry
+    ( @options[:type] == :frequency ? get_frequency : get_fixed )
+  end
+
   def get_expiration
-    (Time.now + ( @options[:type] == :frequency ? get_frequency : get_fixed ))
+    (Time.now + expiry)
   end
 
   def get_frequency

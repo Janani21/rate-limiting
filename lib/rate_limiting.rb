@@ -70,8 +70,11 @@ class RateLimiting
     end
   end
 
-  def cache_set(key, value)
+  def cache_set(key, expiry, value)
     case
+    when cache.respond_to?(:setex)
+      logger.debug { "Setting expiry for the key #{key}: #{expiry}" }
+      cache.setex(key, expiry, value)
     when cache.respond_to?(:[])
       begin
         cache[key] = value
@@ -114,10 +117,11 @@ class RateLimiting
     if cache_has?(key)
       record = cache_get(key)
       logger.debug "[#{self}] #{request.ip}:#{request.path}: Rate limiting entry: '#{key}' => #{record}"
-      if (reset = Time.at(record.split(':')[1].to_i)) > Time.now
+      current_time = Time.now
+      if (reset = Time.at(record.split(':')[1].to_i)) > current_time
         # rule hasn't been reset yet
         times = record.split(':')[0].to_i
-        cache_set(key, "#{times + 1}:#{reset.to_i}")
+        cache_set(key, reset.to_i - current_time.to_i, "#{times + 1}:#{reset.to_i}")
         if (times) < rule.limit
           # within rate limit
           response = get_header(times + 1, reset, rule.limit)
@@ -127,11 +131,11 @@ class RateLimiting
         end
       else
         response = get_header(1, rule.get_expiration, rule.limit)
-        cache_set(key, "1:#{rule.get_expiration.to_i}")
+        cache_set(key, rule.expiry, "1:#{rule.get_expiration.to_i}")
       end
     else
       response = get_header(1, rule.get_expiration, rule.limit)
-      cache_set(key, "1:#{rule.get_expiration.to_i}")
+      cache_set(key, rule.expiry, "1:#{rule.get_expiration.to_i}")
     end
     response
   end
